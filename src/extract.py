@@ -12,10 +12,21 @@ print(response.status_code)
 data = response.json()
 
 results = data['results'][:5]  ### print the first 5 pokemon
-for pokemon in results:
-    # print(pokemon['name'])
-    # print(pokemon['url'])
+print(f"Fetched {len(results)} Pokémon")
 
+# Connect to PostgreSQL database
+connection = psycopg.connect(
+    host="localhost",
+    port=5433,
+    dbname="de_project",
+    user="postgres",
+    password=os.environ["POSTGRES_PASSWORD"]
+)
+print("Connected to PostgreSQL")
+cursor = connection.cursor()
+
+# loop through the first 5 pokemon and get their details
+for pokemon in results:
     detail_response = requests.get(pokemon['url'])
     detail_data = detail_response.json()
 
@@ -27,14 +38,25 @@ for pokemon in results:
     }
     print(pokemon_record)
 
-connection = psycopg.connect(
-    host="localhost",
-    port=5433,
-    dbname="de_project",
-    user="postgres",
-    password=os.environ["POSTGRES_PASSWORD"]
-)
-print("Connected to PostgreSQL")
+    cursor.execute(
+        """
+        INSERT INTO pokemon (id, name, height, weight)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (
+            pokemon_record['id'],
+            pokemon_record['name'],
+            pokemon_record['height'],
+            pokemon_record['weight']
+        )
+    )
+
+print("Committing changes...")
+connection.commit()
+
+cursor.close()
+connection.close()
+print("Pipeline complete")
 
 ####### print some data from the API
 # print(data.keys())

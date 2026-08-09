@@ -7,3 +7,13 @@ CREATE TABLE pokemon (
 
 SELECT * FROM pokemon
 ORDER BY id;
+
+BEGIN;
+
+INSERT INTO pokemon (id, name, height, weight)
+VALUES (6, 'test-pokemon', 10, 10);
+
+INSERT INTO pokemon (id, name, height, weight)
+VALUES (1, 'duplicate', 10, 10);
+
+ROLLBACK;

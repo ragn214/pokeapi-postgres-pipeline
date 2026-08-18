@@ -14,14 +14,37 @@ logging.basicConfig(
 )
 
 try:
-    # Fetch data from the PokeAPI
-    url = "https://pokeapi.co/api/v2/pokemon"  
-    response = requests.get(url,params={'limit': 1351}, timeout=15) 
-    # print(response.status_code)
-    response.raise_for_status()
-    data = response.json()
-    results = data['results'][:number_of_records]  
-    logging.info("Fetched %s pokemon from PokeAPI", len(results))
+
+    url = "https://pokeapi.co/api/v2/pokemon?limit=20"  # Start with the first page of results
+    results = []
+    page_url = url
+
+    page_count = 0
+
+    while page_url and len(results) < number_of_records:
+        response = requests.get(page_url, timeout=15)
+        response.raise_for_status()
+
+        data = response.json()
+
+        page_count += 1
+        results.extend(data['results'])
+
+        logging.info("Fetched page %s: %s records, %s collected so far",
+            page_count,
+            len(data['results']),
+            len(results)
+        ) 
+
+        page_url = data['next']
+        
+    results = results[:number_of_records]
+
+    logging.info(
+        "Collected %s Pokemon from %s pages",
+        len(results),
+        page_count
+    )
 
     # Connect to PostgreSQL database
     connection = psycopg.connect(
@@ -81,7 +104,8 @@ try:
                 "Progress: %s Pokemon processed", 
                 processed
             )
-        
+
+
     connection.commit()
 
     logging.info(

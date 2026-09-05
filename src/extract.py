@@ -3,7 +3,7 @@ import requests
 import psycopg
 import logging
 
-number_of_records = 50 # can be changed to any number from 1 to 1351, which is the total number of pokemon in the PokeAPI
+number_of_records = 2 # can be changed to any number from 1 to 1351, which is the total number of pokemon in the PokeAPI
 
 connection = None
 cursor = None
@@ -21,6 +21,7 @@ try:
 
     page_count = 0
 
+    # Fetch pages of results until we have enough records or there are no more pages
     while page_url and len(results) < number_of_records:
         response = requests.get(page_url, timeout=15)
         response.raise_for_status()
@@ -71,7 +72,7 @@ try:
         detail_response.raise_for_status()
 
         detail_data = detail_response.json()
-        
+
         pokemon_record = {
             'id': detail_data['id'],
             'name': detail_data['name'],
@@ -79,6 +80,7 @@ try:
             'weight': detail_data['weight']
         }
 
+        # Insert the record into the database, ignoring duplicates
         cursor.execute(
             """
             INSERT INTO pokemon (id, name, height, weight)
@@ -92,7 +94,8 @@ try:
                 pokemon_record["weight"]
             )
         )
-        
+
+        # Update the processing counters
         processed += 1
         if cursor.rowcount == 1:
             inserted += 1
@@ -105,6 +108,36 @@ try:
                 processed
             )
 
+        for pokemon_type in detail_data['types']:
+            slot = pokemon_type['slot']
+            type_name = pokemon_type['type']['name']
+            type_url = pokemon_type['type']['url']
+            type_id = int(type_url.rstrip('/').split('/')[-1])
+
+            cursor.execute(
+                """
+                INSERT INTO types (id, name)
+                VALUES (%s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    type_id,
+                    type_name
+                )
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO pokemon_types (pokemon_id, type_id, slot)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (pokemon_id, type_id) DO NOTHING
+                """,
+                (
+                    pokemon_record["id"],
+                    type_id,
+                    slot
+                )
+            )
 
     connection.commit()
 
@@ -115,6 +148,7 @@ try:
     skipped
     )
 
+# Handle exceptions and ensure resources are cleaned up
 except requests.exceptions.RequestException as error:
     logging.error("API error: %s", error)
     if connection is not None:

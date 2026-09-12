@@ -3,7 +3,7 @@ import requests
 import psycopg
 import logging
 
-number_of_records = 2 # can be changed to any number from 1 to 1351, which is the total number of pokemon in the PokeAPI
+number_of_records = 50 # can be changed to any number from 1 to 1351, which is the total number of pokemon in the PokeAPI
 
 connection = None
 cursor = None

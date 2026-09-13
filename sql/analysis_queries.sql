@@ -41,3 +41,30 @@ JOIN types t
 GROUP BY t.name
 HAVING COUNT(p.id) >= 5
 ORDER BY pokemon_count DESC, t.name ASC;
+
+SELECT
+	p.id,
+	p.name,
+	COUNT(pt.type_id) AS type_count
+FROM pokemon p
+JOIN pokemon_types pt
+	ON p.id = pt.pokemon_id
+GROUP BY p.id, p.name
+HAVING COUNT(pt.type_id) = 2
+ORDER BY p.id;
+
+SELECT
+	t.name,
+	COUNT(pt.pokemon_id) AS pokemon_count
+FROM types t
+JOIN pokemon_types as pt
+	ON t.id = pt.type_id
+WHERE pt.slot = 1
+GROUP BY t.name
+HAVING COUNT(pt.pokemon_id) >= 3
+ORDER BY pokemon_count DESC;
+
+select *
+from pokemon_types;
+
+	

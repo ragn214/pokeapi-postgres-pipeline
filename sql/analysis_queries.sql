@@ -67,4 +67,13 @@ ORDER BY pokemon_count DESC;
 select *
 from pokemon_types;
 
-	
+SELECT
+    t.name,
+    COUNT(pt.pokemon_id) AS pokemon_count
+FROM pokemon_types pt
+JOIN types t
+    ON t.id = pt.type_id
+WHERE pt.slot = 2
+GROUP BY t.name
+HAVING COUNT(pt.pokemon_id) >= 4
+ORDER BY pokemon_count DESC;

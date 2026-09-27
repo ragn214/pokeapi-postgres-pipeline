@@ -3,49 +3,80 @@ import requests
 import psycopg
 import logging
 
-number_of_records = 50 # can be changed to any number from 1 to 1351, which is the total number of pokemon in the PokeAPI
+# Set the number of records to fetch from the PokeAPI. The default is 50, but it can be changed to any number from 1 to 1351, which is the total number of Pokémon in the PokeAPI.
+number_of_records = 50
 
+# Initialize database connection and cursor to None
 connection = None
 cursor = None
 
+# Configure logging to display messages with timestamps and log levels
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-try:
 
-    url = "https://pokeapi.co/api/v2/pokemon?limit=20"  # Start with the first page of results
-    results = []
-    page_url = url
+def fetch_pokemon_details(url):
+    response = requests.get(url, timeout=15)
+    response.raise_for_status()
+    return response.json()
 
+
+def fetch_pokemon_list(number_of_records):
+    page_url = "https://pokeapi.co/api/v2/pokemon?limit=20"  # Start with the first page of results
+    pokemon_refs = []
     page_count = 0
 
     # Fetch pages of results until we have enough records or there are no more pages
-    while page_url and len(results) < number_of_records:
+    while page_url and len(pokemon_refs) < number_of_records:
         response = requests.get(page_url, timeout=15)
         response.raise_for_status()
 
         data = response.json()
 
         page_count += 1
-        results.extend(data['results'])
+        pokemon_refs.extend(data['results'])
 
         logging.info("Fetched page %s: %s records, %s collected so far",
             page_count,
             len(data['results']),
-            len(results)
+            len(pokemon_refs)
         ) 
 
         page_url = data['next']
-        
-    results = results[:number_of_records]
+
+    pokemon_refs = pokemon_refs[:number_of_records]
 
     logging.info(
         "Collected %s Pokemon from %s pages",
-        len(results),
+        len(pokemon_refs),
         page_count
     )
+    return pokemon_refs
+
+
+def insert_pokemon(cursor, pokemon_record):
+    # Insert the record into the database, ignoring duplicates
+    cursor.execute(
+        """
+        INSERT INTO pokemon (id, name, height, weight)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        (
+            pokemon_record["id"],
+            pokemon_record["name"],
+            pokemon_record["height"],
+            pokemon_record["weight"]
+        )
+    )
+
+    return cursor.rowcount == 1
+
+
+try:
+    pokemon_refs = fetch_pokemon_list(number_of_records)
 
     # Connect to PostgreSQL database
     connection = psycopg.connect(
@@ -63,15 +94,8 @@ try:
     skipped = 0
 
     # loop through the first n pokemon and get their details
-    for pokemon in results:
-        detail_response = requests.get(
-            pokemon['url'], 
-            timeout=15
-        )
-
-        detail_response.raise_for_status()
-
-        detail_data = detail_response.json()
+    for pokemon in pokemon_refs:
+        detail_data = fetch_pokemon_details(pokemon['url'])
 
         pokemon_record = {
             'id': detail_data['id'],
@@ -80,24 +104,11 @@ try:
             'weight': detail_data['weight']
         }
 
-        # Insert the record into the database, ignoring duplicates
-        cursor.execute(
-            """
-            INSERT INTO pokemon (id, name, height, weight)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            (
-                pokemon_record["id"],
-                pokemon_record["name"],
-                pokemon_record["height"],
-                pokemon_record["weight"]
-            )
-        )
+        was_inserted = insert_pokemon(cursor, pokemon_record)
 
         # Update the processing counters
         processed += 1
-        if cursor.rowcount == 1:
+        if was_inserted:
             inserted += 1
         else:
             skipped += 1
@@ -108,6 +119,7 @@ try:
                 processed
             )
 
+        # Insert the types into the types table and the pokemon_types table
         for pokemon_type in detail_data['types']:
             slot = pokemon_type['slot']
             type_name = pokemon_type['type']['name']

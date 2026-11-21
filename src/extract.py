@@ -3,12 +3,8 @@ import requests
 import psycopg
 import logging
 
-# Set the number of records to fetch from the PokeAPI. The default is 50, but it can be changed to any number from 1 to 1351, which is the total number of Pokémon in the PokeAPI.
-number_of_records = 50
-
-# Initialize database connection and cursor to None
-connection = None
-cursor = None
+# Number of Pokémon to fetch from the PokeAPI
+NUMBER_OF_RECORDS = 50
 
 # Configure logging to display messages with timestamps and log levels
 logging.basicConfig(
@@ -58,6 +54,7 @@ def fetch_pokemon_list(number_of_records):
 
 def insert_pokemon(cursor, pokemon_record):
     # Insert the record into the database, ignoring duplicates
+
     cursor.execute(
         """
         INSERT INTO pokemon (id, name, height, weight)
@@ -75,108 +72,137 @@ def insert_pokemon(cursor, pokemon_record):
     return cursor.rowcount == 1
 
 
-try:
-    pokemon_refs = fetch_pokemon_list(number_of_records)
+def insert_type(cursor, type_id, type_name):
+    # Insert the type into the database, ignoring duplicates
 
-    # Connect to PostgreSQL database
-    connection = psycopg.connect(
-        host="localhost",
-        port=5433,
-        dbname="de_project",
-        user="postgres",
-        password=os.environ["POSTGRES_PASSWORD"]
-    )
-    logging.info("Connected to PostgreSQL")
-    cursor = connection.cursor()
-
-    processed = 0
-    inserted = 0
-    skipped = 0
-
-    # loop through the first n pokemon and get their details
-    for pokemon in pokemon_refs:
-        detail_data = fetch_pokemon_details(pokemon['url'])
-
-        pokemon_record = {
-            'id': detail_data['id'],
-            'name': detail_data['name'],
-            'height': detail_data['height'],
-            'weight': detail_data['weight']
-        }
-
-        was_inserted = insert_pokemon(cursor, pokemon_record)
-
-        # Update the processing counters
-        processed += 1
-        if was_inserted:
-            inserted += 1
-        else:
-            skipped += 1
-
-        if processed % 10 == 0:
-            logging.info(
-                "Progress: %s Pokemon processed", 
-                processed
-            )
-
-        # Insert the types into the types table and the pokemon_types table
-        for pokemon_type in detail_data['types']:
-            slot = pokemon_type['slot']
-            type_name = pokemon_type['type']['name']
-            type_url = pokemon_type['type']['url']
-            type_id = int(type_url.rstrip('/').split('/')[-1])
-
-            cursor.execute(
-                """
-                INSERT INTO types (id, name)
-                VALUES (%s, %s)
-                ON CONFLICT (id) DO NOTHING
-                """,
-                (
-                    type_id,
-                    type_name
-                )
-            )
-
-            cursor.execute(
-                """
-                INSERT INTO pokemon_types (pokemon_id, type_id, slot)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (pokemon_id, type_id) DO NOTHING
-                """,
-                (
-                    pokemon_record["id"],
-                    type_id,
-                    slot
-                )
-            )
-
-    connection.commit()
-
-    logging.info(
-    "Processed %s Pokémon: %s inserted, %s skipped",
-    processed,
-    inserted,
-    skipped
+    cursor.execute(
+        """
+        INSERT INTO types (id, name)
+        VALUES (%s, %s)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        (
+            type_id,
+            type_name
+        )
     )
 
-# Handle exceptions and ensure resources are cleaned up
-except requests.exceptions.RequestException as error:
-    logging.error("API error: %s", error)
-    if connection is not None:
-        connection.rollback()
-    raise
 
-except psycopg.Error as error:
-    logging.error("Database error: %s", error)
-    if connection is not None:
-        connection.rollback()
-    raise
+def insert_pokemon_type(cursor, pokemon_id, type_id, slot):
+    # Insert the relationship between the Pokémon and its type into the database, ignoring duplicates
 
-finally:
-    if cursor is not None:
-        cursor.close()
-    if connection is not None:
-        connection.close()
+    cursor.execute(
+        """
+        INSERT INTO pokemon_types (pokemon_id, type_id, slot)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (pokemon_id, type_id) DO NOTHING
+        """,
+        (
+            pokemon_id,
+            type_id,
+            slot
+        )
+    )
 
-logging.info("Pipeline complete")
+
+def process_pokemon_data(cursor, pokemon):
+    # Fetch one Pokémon's details and insert the Pokémon and type data into the database
+
+    detail_data = fetch_pokemon_details(pokemon['url'])
+
+    pokemon_record = {
+        'id': detail_data['id'],
+        'name': detail_data['name'],
+        'height': detail_data['height'],
+        'weight': detail_data['weight']
+    }
+
+    was_inserted = insert_pokemon(cursor, pokemon_record)
+
+    for pokemon_type in detail_data['types']:
+        slot = pokemon_type['slot']
+        type_name = pokemon_type['type']['name']
+        type_url = pokemon_type['type']['url']
+        type_id = int(type_url.rstrip('/').split('/')[-1])
+
+        insert_type(cursor, type_id, type_name)
+
+        insert_pokemon_type(cursor, pokemon_record['id'], type_id, slot)
+
+    return was_inserted
+
+
+def main():
+    # Initialize database connection and cursor to None
+    connection = None
+    cursor = None
+
+    try:
+        pokemon_refs = fetch_pokemon_list(NUMBER_OF_RECORDS)
+
+        # Connect to PostgreSQL database
+        connection = psycopg.connect(
+            host="localhost",
+            port=5433,
+            dbname="de_project",
+            user="postgres",
+            password=os.environ["POSTGRES_PASSWORD"]
+        )
+        logging.info("Connected to PostgreSQL")
+        cursor = connection.cursor()
+
+        processed = 0
+        inserted = 0
+        skipped = 0
+
+        # loop through the first n pokemon and get their details
+        for pokemon in pokemon_refs:
+            was_inserted = process_pokemon_data(cursor, pokemon)
+
+            # Update the processing counters
+            processed += 1
+            if was_inserted:
+                inserted += 1
+            else:
+                skipped += 1
+
+            if processed % 10 == 0:
+                logging.info(
+                    "Progress: %s Pokemon processed", 
+                    processed
+                )
+
+        connection.commit()
+
+        logging.info(
+        "Processed %s Pokémon: %s inserted, %s skipped",
+        processed,
+        inserted,
+        skipped
+        )
+
+    # Handle exceptions and ensure resources are cleaned up
+    except requests.exceptions.RequestException as error:
+        logging.error("API error: %s", error)
+        if connection is not None:
+            connection.rollback()
+        raise
+
+    except psycopg.Error as error:
+        logging.error("Database error: %s", error)
+        if connection is not None:
+            connection.rollback()
+        raise
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None:
+            connection.close()
+
+    logging.info("Pipeline complete")
+
+
+if __name__ == "__main__":
+    main()
+

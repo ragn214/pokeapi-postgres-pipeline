@@ -53,8 +53,6 @@ def fetch_pokemon_list(number_of_records):
 
 
 def insert_pokemon(cursor, pokemon_record):
-    # Insert the record into the database, ignoring duplicates
-
     cursor.execute(
         """
         INSERT INTO pokemon (id, name, height, weight)
@@ -73,8 +71,6 @@ def insert_pokemon(cursor, pokemon_record):
 
 
 def insert_type(cursor, type_id, type_name):
-    # Insert the type into the database, ignoring duplicates
-
     cursor.execute(
         """
         INSERT INTO types (id, name)
@@ -89,8 +85,6 @@ def insert_type(cursor, type_id, type_name):
 
 
 def insert_pokemon_type(cursor, pokemon_id, type_id, slot):
-    # Insert the relationship between the Pokémon and its type into the database, ignoring duplicates
-
     cursor.execute(
         """
         INSERT INTO pokemon_types (pokemon_id, type_id, slot)
@@ -175,10 +169,10 @@ def main():
         connection.commit()
 
         logging.info(
-        "Processed %s Pokémon: %s inserted, %s skipped",
-        processed,
-        inserted,
-        skipped
+            "Processed %s Pokémon: %s inserted, %s skipped",
+            processed,
+            inserted,
+            skipped
         )
 
     # Handle exceptions and ensure resources are cleaned up

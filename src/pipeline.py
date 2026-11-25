@@ -52,6 +52,12 @@ def fetch_pokemon_list(number_of_records):
     return pokemon_refs
 
 
+def validate_pokemon_record(record):
+    for field in ['id', 'name', 'height', 'weight']:
+        if field not in record:
+            raise ValueError(f"Missing required field: {field}")
+
+
 def insert_pokemon(cursor, pokemon_record):
     cursor.execute(
         """
